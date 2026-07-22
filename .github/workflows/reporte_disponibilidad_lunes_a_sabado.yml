@@ -31,4 +31,4 @@ jobs:
           CORREO_ORIGEN: ${{ secrets.CORREO_ORIGEN }}
           CORREO_DESTINO: ${{ secrets.CORREO_DESTINO }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-        run: python Programa_disponibilidad.py
+        run: python Programa_disponibilidad_flota.py
