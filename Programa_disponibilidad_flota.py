@@ -380,10 +380,11 @@ def generar_excel(fecha):
 
 def enviar_correo(fecha_hora):
     mensaje = EmailMessage()
-
     mensaje["From"] = CORREO_ORIGEN
     mensaje["To"] = CORREO_DESTINO
-    mensaje["Subject"] = "Reporte indisponibilidad flota granel"
+    mensaje["Subject"] = (
+        f"Reporte indisponibilidad flota granel - {fecha_hora}"
+    )
 
     texto = (
         "Estimados,\n\n"
@@ -391,7 +392,6 @@ def enviar_correo(fecha_hora):
         f"con última actualización al {fecha_hora}.\n\n"
         "Saludos."
     )
-
     mensaje.set_content(texto)
 
     mensaje.add_alternative(
@@ -399,13 +399,17 @@ def enviar_correo(fecha_hora):
         <html>
             <body style="font-family: Arial, sans-serif; color: #333333;">
                 <p>Estimados,</p>
-
                 <p>
                     Se adjunta reporte de indisponibilidad flota granel
-                    con última actualización al
-                    <strong>{fecha_hora}</strong>.
+                    con última actualización al <strong>{fecha_hora}</strong>.
                 </p>
-
+                <p>
+                    <img
+                        src="cid:grafico_flota"
+                        alt="Reporte de indisponibilidad de flota"
+                        style="max-width: 100%; height: auto;"
+                    >
+                </p>
                 <p>Saludos.</p>
             </body>
         </html>
@@ -413,17 +417,19 @@ def enviar_correo(fecha_hora):
         subtype="html",
     )
 
-    
-    with open(ARCHIVO_GRAFICO, "rb") as archivo:
-        mensaje.add_attachment(
+    grafico = Path(ARCHIVO_GRAFICO)
+    excel = Path(ARCHIVO_EXCEL)
+
+    with grafico.open("rb") as archivo:
+        mensaje.get_payload()[-1].add_related(
             archivo.read(),
             maintype="image",
             subtype="png",
-            filename="status_flota_dependencia.png",
+            cid="<grafico_flota>",
+            filename=grafico.name,
         )
 
-    
-    with open(ARCHIVO_EXCEL, "rb") as archivo:
+    with excel.open("rb") as archivo:
         mensaje.add_attachment(
             archivo.read(),
             maintype="application",
@@ -431,22 +437,14 @@ def enviar_correo(fecha_hora):
                 "vnd.openxmlformats-officedocument."
                 "spreadsheetml.sheet"
             ),
-            filename="eventos_abiertos.xlsx",
+            filename=excel.name,
         )
 
-    with smtplib.SMTP_SSL(
-        "smtp.gmail.com",
-        465,
-    ) as servidor:
-
-        servidor.login(
-            CORREO_ORIGEN,
-            GMAIL_APP_PASSWORD,
-        )
-
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as servidor:
+        servidor.login(CORREO_ORIGEN, GMAIL_APP_PASSWORD)
         servidor.send_message(mensaje)
 
-    print(f"Correo enviado a {CORREO_DESTINO}")
+    print(f"Correo enviado a: {CORREO_DESTINO}")
 
 
 def main():
