@@ -383,7 +383,7 @@ def enviar_correo(fecha_hora):
     mensaje["From"] = CORREO_ORIGEN
     mensaje["To"] = CORREO_DESTINO
     mensaje["Subject"] = (
-        f"Reporte indisponibilidad flota granel - {fecha_hora}"
+        f"Reporte indisponibilidad flota granel"
     )
 
     texto = (
