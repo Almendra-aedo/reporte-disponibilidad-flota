@@ -271,7 +271,11 @@ def ajustar_excel(hoja):
         hoja.column_dimensions[letra].width = min(max(ancho, 12), 45)
 
 
-def generar_excel(fecha):
+def generar_excel():
+    fecha = datetime.now(
+        ZoneInfo("America/Santiago")
+    ).strftime("%Y-%m-%d")
+
     eventos = consultar(
         URL_EVENTOS,
         {
@@ -287,6 +291,33 @@ def generar_excel(fecha):
         ~es_vacio(df["start_date"])
         & es_vacio(df["end_date"])
     ].copy()
+
+    vehiculos_actuales = pd.DataFrame(consultar(URL_VEHICULOS))
+
+    codigos_vigentes = set(
+        vehiculos_actuales["code"]
+        .dropna()
+        .astype(str)
+        .str.strip()
+        .str.upper()
+    )
+
+    df["vehicle_code_normalizado"] = (
+        df["vehicle_code"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.upper()
+    )
+
+    df = df[
+        df["vehicle_code_normalizado"].isin(codigos_vigentes)
+    ].copy()
+
+    df = df.drop(
+        columns=["vehicle_code_normalizado"],
+        errors="ignore",
+    )
 
 
     columnas_eliminar = [
@@ -377,87 +408,50 @@ def generar_excel(fecha):
 
 
 
-
-def enviar_correo(fecha_hora):
+def enviar_correo():
     mensaje = EmailMessage()
     mensaje["From"] = CORREO_ORIGEN
     mensaje["To"] = CORREO_DESTINO
-    mensaje["Subject"] = (
-        f"Reporte indisponibilidad flota granel - {fecha_hora}"
+    mensaje["Subject"] = "Reporte indisponibilidad flota granel"
+
+    # El cuerpo definitivo lo construye Power Automate.
+    mensaje.set_content(
+        "Reporte automático para procesamiento en Power Automate."
     )
 
-    texto = (
-        "Estimados,\n\n"
-        "Se adjunta reporte de indisponibilidad flota granel "
-        f"con última actualización al {fecha_hora}.\n\n"
-        "Saludos."
-    )
-    mensaje.set_content(texto)
+    archivos = [
+        (
+            Path(ARCHIVO_GRAFICO),
+            "image",
+            "png",
+        ),
+        (
+            Path(ARCHIVO_EXCEL),
+            "application",
+            "vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+    ]
 
-    mensaje.add_alternative(
-        f"""
-        <html>
-            <body style="font-family: Arial, sans-serif; color: #333333;">
-                <p>Estimados,</p>
-                <p>
-                    Se adjunta reporte de indisponibilidad flota granel
-                    con última actualización al <strong>{fecha_hora}</strong>.
-                </p>
-                <p>
-                    <img
-                        src="cid:grafico_flota"
-                        alt="Reporte de indisponibilidad de flota"
-                        style="max-width: 100%; height: auto;"
-                    >
-                </p>
-                <p>Saludos.</p>
-            </body>
-        </html>
-        """,
-        subtype="html",
-    )
-
-    grafico = Path(ARCHIVO_GRAFICO)
-    excel = Path(ARCHIVO_EXCEL)
-
-    with grafico.open("rb") as archivo:
-        mensaje.get_payload()[-1].add_related(
-            archivo.read(),
-            maintype="image",
-            subtype="png",
-            cid="<grafico_flota>",
-            filename=grafico.name,
-        )
-
-    with excel.open("rb") as archivo:
-        mensaje.add_attachment(
-            archivo.read(),
-            maintype="application",
-            subtype=(
-                "vnd.openxmlformats-officedocument."
-                "spreadsheetml.sheet"
-            ),
-            filename=excel.name,
-        )
+    for ruta, tipo_principal, subtipo in archivos:
+        with ruta.open("rb") as archivo:
+            mensaje.add_attachment(
+                archivo.read(),
+                maintype=tipo_principal,
+                subtype=subtipo,
+                filename=ruta.name,
+            )
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as servidor:
         servidor.login(CORREO_ORIGEN, GMAIL_APP_PASSWORD)
         servidor.send_message(mensaje)
 
-    print(f"Correo enviado a: {CORREO_DESTINO}")
-
 
 def main():
-    ahora = datetime.now(ZoneInfo("America/Santiago"))
-    fecha_api = ahora.strftime("%Y-%m-%d")
-    fecha_correo = ahora.strftime("%d-%m-%Y %H:%M")
-
     generar_grafico()
-    generar_excel(fecha_api)
-    enviar_correo(fecha_correo)
-
+    generar_excel()
+    enviar_correo()
     print(
-        f"Reporte consultado y enviado con fecha {fecha_correo}"
+        f"Generados y enviados: {ARCHIVO_GRAFICO} y {ARCHIVO_EXCEL}"
     )
 
 
