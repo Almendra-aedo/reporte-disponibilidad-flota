@@ -3,10 +3,6 @@ name: Reporte disponibilidad flota
 on:
   workflow_dispatch:
 
-  schedule:
-    - cron: "30 7 * * 1-6"
-      timezone: "America/Santiago"
-
 jobs:
   generar-y-enviar:
     runs-on: ubuntu-latest
