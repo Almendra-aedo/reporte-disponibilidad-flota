@@ -229,14 +229,20 @@ def generar_grafico():
                 fontweight="bold",
             )
 
-        ax.text(
-            total_centro + 0.25,
-            posicion,
-            f"Total {total_centro}",
-            va="center",
-            color="#5E646D",
-            fontsize=8.5,
-        )
+            porcentaje_indisponibilidad = (
+                ind / total_centro * 100
+                if total_centro > 0
+                else 0
+            )
+            
+            ax.text(
+                total_centro + 0.25,
+                posicion,
+                f"{porcentaje_indisponibilidad:.1f}%".replace(".", ","),
+                va="center",
+                color="#5E646D",
+                fontsize=8.5,
+            )
 
     maximo = max(int(resumen["Total"].max()), 1)
     ax.set_xlim(0, maximo + max(3, int(maximo * 0.13)))
