@@ -16,6 +16,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 API_KEY = os.environ["DRIVIN_API_KEY"]
 
 URL_VEHICULOS = "https://external.driv.in/api/external/v2/vehicles"
+
 URL_EVENTOS = (
     "https://external.driv.in/api/external/v2/"
     "schedulable_events/events_abastible"
@@ -34,6 +35,10 @@ HEADERS = {
 }
 
 
+# ============================================================
+# CONSULTA API
+# ============================================================
+
 def consultar(url, params=None):
     respuesta = requests.get(
         url,
@@ -41,18 +46,36 @@ def consultar(url, params=None):
         params=params,
         timeout=90,
     )
+
     respuesta.raise_for_status()
+
     datos = respuesta.json()
+
     return datos["response"] if isinstance(datos, dict) else datos
 
 
+# ============================================================
+# DEPENDENCIA
+# ============================================================
+
 def dependencia(fleets):
     nombre = str(fleets or "").split(",")[0].strip()
-    return nombre[6:].strip() if nombre.lower().startswith("flota ") else nombre
 
+    return (
+        nombre[6:].strip()
+        if nombre.lower().startswith("flota ")
+        else nombre
+    )
+
+
+# ============================================================
+# TARJETAS KPI
+# ============================================================
 
 def tarjeta(ax, titulo, valor, subtitulo):
+
     ax.axis("off")
+
     ax.add_patch(
         FancyBboxPatch(
             (0.02, 0.06),
@@ -65,76 +88,177 @@ def tarjeta(ax, titulo, valor, subtitulo):
             linewidth=1.2,
         )
     )
+
     ax.text(
-        0.5, 0.68, titulo,
-        ha="center", va="center",
+        0.5,
+        0.68,
+        titulo,
+        ha="center",
+        va="center",
         transform=ax.transAxes,
-        fontsize=11, color="#5B616B",
+        fontsize=11,
+        color="#5B616B",
     )
+
     ax.text(
-        0.5, 0.39, valor,
-        ha="center", va="center",
+        0.5,
+        0.39,
+        valor,
+        ha="center",
+        va="center",
         transform=ax.transAxes,
-        fontsize=27, color="#086B82",
+        fontsize=27,
+        color="#086B82",
         fontweight="bold",
     )
+
     ax.text(
-        0.5, 0.16, subtitulo,
-        ha="center", va="center",
+        0.5,
+        0.16,
+        subtitulo,
+        ha="center",
+        va="center",
         transform=ax.transAxes,
-        fontsize=8.5, color="#8A9099",
+        fontsize=8.5,
+        color="#8A9099",
     )
 
 
+# ============================================================
+# GENERAR GRÁFICO
+# ============================================================
+
 def generar_grafico():
-    df = pd.DataFrame(consultar(URL_VEHICULOS))[
+
+    df = pd.DataFrame(
+        consultar(URL_VEHICULOS)
+    )[
         ["code", "fleets", "is_active"]
     ].copy()
 
-    df["code"] = df["code"].fillna("").astype(str).str.strip()
-    df["fleets"] = df["fleets"].fillna("").astype(str).str.strip()
+    # Limpiar código
+    df["code"] = (
+        df["code"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
+
+    # Limpiar flota
+    df["fleets"] = (
+        df["fleets"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
+
+    # ========================================================
+    # FILTROS DE VEHÍCULOS
+    # ========================================================
 
     df = df[
-        ~df["code"].str.upper().str.contains("FI", na=False)
+        ~df["code"]
+        .str.upper()
+        .str.contains("FI", na=False)
+
         & df["code"].str.len().le(6)
-        & ~df["fleets"].str.lower().str.contains("emergencia", na=False)
+
+        & ~df["fleets"]
+        .str.lower()
+        .str.contains("emergencia", na=False)
     ].copy()
 
+    # Dependencia
     df["Dependencia"] = df["fleets"].apply(dependencia)
+
+    # Estado
     df["Estado"] = df["is_active"].map(
-        {True: "Disponible", False: "Indisponible"}
+        {
+            True: "Disponible",
+            False: "Indisponible",
+        }
     )
+
     df = df.dropna(subset=["Estado"])
 
+    # ========================================================
+    # RESUMEN POR DEPENDENCIA
+    # ========================================================
+
     resumen = (
-        df.groupby(["Dependencia", "Estado"])
+        df.groupby(
+            ["Dependencia", "Estado"]
+        )
         .size()
         .unstack(fill_value=0)
-        .reindex(columns=["Indisponible", "Disponible"], fill_value=0)
+        .reindex(
+            columns=[
+                "Indisponible",
+                "Disponible",
+            ],
+            fill_value=0,
+        )
     )
+
     resumen["Total"] = resumen.sum(axis=1)
+
     resumen = resumen.sort_values("Total")
 
-    disponibles = int(resumen["Disponible"].sum())
-    indisponibles = int(resumen["Indisponible"].sum())
-    total = disponibles + indisponibles
-    porcentaje = indisponibles / total * 100 if total else 0
+    # ========================================================
+    # KPI GENERALES
+    # ========================================================
 
-    alto = max(8, 3.2 + len(resumen) * 0.42)
+    disponibles = int(
+        resumen["Disponible"].sum()
+    )
+
+    indisponibles = int(
+        resumen["Indisponible"].sum()
+    )
+
+    total = disponibles + indisponibles
+
+    porcentaje = (
+        indisponibles / total * 100
+        if total
+        else 0
+    )
+
+    # ========================================================
+    # FIGURA
+    # ========================================================
+
+    alto = max(
+        8,
+        3.2 + len(resumen) * 0.42
+    )
+
     fig = plt.figure(
         figsize=(13, alto),
         facecolor="white",
         layout="constrained",
     )
+
     grid = fig.add_gridspec(
-        2, 3,
+        2,
+        3,
         height_ratios=[1.35, 6],
         hspace=0.12,
         wspace=0.08,
     )
 
-    tarjetas = [fig.add_subplot(grid[0, i]) for i in range(3)]
-    ax = fig.add_subplot(grid[1, :])
+    tarjetas = [
+        fig.add_subplot(grid[0, i])
+        for i in range(3)
+    ]
+
+    ax = fig.add_subplot(
+        grid[1, :]
+    )
+
+    # ========================================================
+    # TARJETAS
+    # ========================================================
 
     tarjeta(
         tarjetas[0],
@@ -142,12 +266,14 @@ def generar_grafico():
         str(total),
         "Vehículos considerados",
     )
+
     tarjeta(
         tarjetas[1],
         "Flota indisponible",
         str(indisponibles),
         "Suma de todos los centros",
     )
+
     tarjeta(
         tarjetas[2],
         "% indisponibilidad",
@@ -155,13 +281,19 @@ def generar_grafico():
         "Indisponibles / flota actual",
     )
 
+    # ========================================================
+    # GRÁFICO
+    # ========================================================
+
     y = range(len(resumen))
+
     barras_ind = ax.barh(
         y,
         resumen["Indisponible"],
         color="#08788D",
         height=0.68,
     )
+
     barras_disp = ax.barh(
         y,
         resumen["Disponible"],
@@ -170,7 +302,11 @@ def generar_grafico():
         height=0.68,
     )
 
-    ax.set_yticks(list(y), resumen.index)
+    ax.set_yticks(
+        list(y),
+        resumen.index
+    )
+
     ax.set_title(
         "Estado de la flota por dependencia",
         loc="left",
@@ -178,6 +314,7 @@ def generar_grafico():
         fontweight="bold",
         pad=24,
     )
+
     ax.text(
         0,
         1.015,
@@ -186,9 +323,16 @@ def generar_grafico():
         fontsize=9.5,
         color="#757B85",
     )
+
     ax.legend(
-        [barras_disp, barras_ind],
-        ["Disponible", "Indisponible"],
+        [
+            barras_disp,
+            barras_ind,
+        ],
+        [
+            "Disponible",
+            "Indisponible",
+        ],
         loc="upper right",
         bbox_to_anchor=(1, 1.11),
         frameon=False,
@@ -196,19 +340,56 @@ def generar_grafico():
     )
 
     ax.xaxis.grid(alpha=0.16)
+
     ax.set_axisbelow(True)
-    ax.spines[["top", "right", "left"]].set_visible(False)
-    ax.spines["bottom"].set_color("#DADDE2")
-    ax.tick_params(axis="y", length=0, pad=8)
-    ax.tick_params(axis="x", colors="#777D86")
-    ax.set_xlabel("Cantidad de vehículos", color="#686E77")
 
-    for posicion, fila in enumerate(resumen.itertuples()):
-        ind = int(fila.Indisponible)
-        disp = int(fila.Disponible)
-        total_centro = int(fila.Total)
+    ax.spines[
+        ["top", "right", "left"]
+    ].set_visible(False)
 
+    ax.spines["bottom"].set_color(
+        "#DADDE2"
+    )
+
+    ax.tick_params(
+        axis="y",
+        length=0,
+        pad=8
+    )
+
+    ax.tick_params(
+        axis="x",
+        colors="#777D86"
+    )
+
+    ax.set_xlabel(
+        "Cantidad de vehículos",
+        color="#686E77"
+    )
+
+    # ========================================================
+    # VALORES EN LAS BARRAS
+    # ========================================================
+
+    for posicion, fila in enumerate(
+        resumen.itertuples()
+    ):
+
+        ind = int(
+            fila.Indisponible
+        )
+
+        disp = int(
+            fila.Disponible
+        )
+
+        total_centro = int(
+            fila.Total
+        )
+
+        # Cantidad indisponible
         if ind:
+
             ax.text(
                 ind / 2,
                 posicion,
@@ -218,7 +399,10 @@ def generar_grafico():
                 color="white",
                 fontweight="bold",
             )
+
+        # Cantidad disponible
         if disp:
+
             ax.text(
                 ind + disp / 2,
                 posicion,
@@ -229,58 +413,154 @@ def generar_grafico():
                 fontweight="bold",
             )
 
-            porcentaje_indisponibilidad = (
-                ind / total_centro * 100
-                if total_centro > 0
-                else 0
-            )
-            
-            ax.text(
-                total_centro + 0.25,
-                posicion,
-                f"{porcentaje_indisponibilidad:.1f}%".replace(".", ","),
-                va="center",
-                color="#5E646D",
-                fontsize=8.5,
-            )
+        # ====================================================
+        # % INDISPONIBILIDAD DEL CENTRO
+        # ====================================================
 
-    maximo = max(int(resumen["Total"].max()), 1)
-    ax.set_xlim(0, maximo + max(3, int(maximo * 0.13)))
+        porcentaje_indisponibilidad = (
+            ind / total_centro * 100
+            if total_centro > 0
+            else 0
+        )
 
+        ax.text(
+            total_centro + 0.25,
+            posicion,
+            f"{porcentaje_indisponibilidad:.1f}%".replace(
+                ".",
+                ","
+            ),
+            va="center",
+            color="#5E646D",
+            fontsize=8.5,
+        )
+
+    # Espacio a la derecha
+    maximo = max(
+        int(resumen["Total"].max()),
+        1
+    )
+
+    ax.set_xlim(
+        0,
+        maximo
+        + max(
+            3,
+            int(maximo * 0.13)
+        )
+    )
+
+    # Guardar gráfico
     fig.savefig(
         ARCHIVO_GRAFICO,
         dpi=200,
         facecolor="white",
         pad_inches=0.18,
     )
+
     plt.close(fig)
 
 
-def es_vacio(serie):
-    texto = serie.astype(str).str.strip().str.lower()
-    return serie.isna() | texto.isin({"", "none", "nan", "nat", "null"})
+# ============================================================
+# DETECTAR VACÍOS
+# ============================================================
 
+def es_vacio(serie):
+
+    texto = (
+        serie
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
+
+    return (
+        serie.isna()
+        | texto.isin(
+            {
+                "",
+                "none",
+                "nan",
+                "nat",
+                "null",
+            }
+        )
+    )
+
+
+# ============================================================
+# FORMATO EXCEL
+# ============================================================
 
 def ajustar_excel(hoja):
+
     hoja.freeze_panes = "A2"
-    hoja.auto_filter.ref = hoja.dimensions
-    relleno = PatternFill("solid", fgColor="0B7185")
 
+    hoja.auto_filter.ref = (
+        hoja.dimensions
+    )
+
+    relleno = PatternFill(
+        "solid",
+        fgColor="0B7185"
+    )
+
+    # Encabezados
     for celda in hoja[1]:
-        celda.font = Font(bold=True, color="FFFFFF")
+
+        celda.font = Font(
+            bold=True,
+            color="FFFFFF"
+        )
+
         celda.fill = relleno
-        celda.alignment = Alignment(horizontal="center")
 
+        celda.alignment = Alignment(
+            horizontal="center"
+        )
+
+    # Ancho automático
     for columna in hoja.columns:
-        letra = columna[0].column_letter
-        ancho = max(len(str(c.value or "")) for c in columna) + 2
-        hoja.column_dimensions[letra].width = min(max(ancho, 12), 45)
 
+        letra = (
+            columna[0]
+            .column_letter
+        )
+
+        ancho = max(
+            len(
+                str(
+                    c.value or ""
+                )
+            )
+            for c in columna
+        ) + 2
+
+        hoja.column_dimensions[
+            letra
+        ].width = min(
+            max(ancho, 12),
+            45
+        )
+
+
+# ============================================================
+# GENERAR EXCEL
+# ============================================================
 
 def generar_excel():
+
     fecha = datetime.now(
-        ZoneInfo("America/Santiago")
-    ).strftime("%Y-%m-%d")
+        ZoneInfo(
+            "America/Santiago"
+        )
+    ).strftime(
+        "%Y-%m-%d"
+    )
+
+    # ========================================================
+    # CONSULTAR EVENTOS ABIERTOS
+    # ========================================================
 
     eventos = consultar(
         URL_EVENTOS,
@@ -291,24 +571,184 @@ def generar_excel():
         },
     )
 
-    df = pd.json_normalize(eventos, sep=".")
+    df = pd.json_normalize(
+        eventos,
+        sep="."
+    )
 
+    # Solo eventos realmente abiertos
     df = df[
-        ~es_vacio(df["start_date"])
-        & es_vacio(df["end_date"])
+        ~es_vacio(
+            df["start_date"]
+        )
+        & es_vacio(
+            df["end_date"]
+        )
     ].copy()
 
-    vehiculos_actuales = pd.DataFrame(consultar(URL_VEHICULOS))
+    # ========================================================
+    # CONSULTAR VEHÍCULOS
+    # ========================================================
+
+    vehiculos_actuales = pd.DataFrame(
+        consultar(
+            URL_VEHICULOS
+        )
+    )
+
+    # ========================================================
+    # CREAR DETALLE DE FLOTA
+    # ========================================================
+
+    detalle_flota = (
+        vehiculos_actuales.copy()
+    )
+
+    detalle_flota["code"] = (
+        detalle_flota["code"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
+
+    detalle_flota["fleets"] = (
+        detalle_flota["fleets"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
+
+    # ========================================================
+    # MISMOS FILTROS QUE EL GRÁFICO
+    # ========================================================
+
+    detalle_flota = detalle_flota[
+        ~detalle_flota["code"]
+        .str.upper()
+        .str.contains(
+            "FI",
+            na=False
+        )
+
+        & detalle_flota[
+            "code"
+        ].str.len().le(6)
+
+        & ~detalle_flota[
+            "fleets"
+        ]
+        .str.lower()
+        .str.contains(
+            "emergencia",
+            na=False
+        )
+    ].copy()
+
+    # Dependencia
+    detalle_flota[
+        "Dependencia"
+    ] = (
+        detalle_flota[
+            "fleets"
+        ].apply(
+            dependencia
+        )
+    )
+
+    # Estado
+    detalle_flota[
+        "Estado"
+    ] = (
+        detalle_flota[
+            "is_active"
+        ].map(
+            {
+                True: "Disponible",
+                False: "Indisponible",
+            }
+        )
+    )
+
+    detalle_flota = (
+        detalle_flota
+        .dropna(
+            subset=["Estado"]
+        )
+    )
+
+    # ========================================================
+    # COLUMNAS A MOSTRAR EN DETALLE
+    # ========================================================
+
+    columnas_detalle = [
+        columna
+        for columna in [
+            "code",
+            "Dependencia",
+            "Estado",
+            "model",
+            "description",
+            "schema_name",
+        ]
+        if columna
+        in detalle_flota.columns
+    ]
+
+    detalle_flota = (
+        detalle_flota[
+            columnas_detalle
+        ].copy()
+    )
+
+    # Renombrar
+    detalle_flota = (
+        detalle_flota.rename(
+            columns={
+                "code": "Código vehículo",
+                "model": "Modelo",
+                "description": "Descripción vehículo",
+                "schema_name": "Esquema",
+            }
+        )
+    )
+
+    # Orden
+    columnas_orden = [
+        columna
+        for columna in [
+            "Dependencia",
+            "Estado",
+            "Código vehículo",
+        ]
+        if columna
+        in detalle_flota.columns
+    ]
+
+    if columnas_orden:
+
+        detalle_flota = (
+            detalle_flota.sort_values(
+                columnas_orden
+            )
+        )
+
+    # ========================================================
+    # CÓDIGOS DE VEHÍCULOS VIGENTES
+    # ========================================================
 
     codigos_vigentes = set(
-        vehiculos_actuales["code"]
+        vehiculos_actuales[
+            "code"
+        ]
         .dropna()
         .astype(str)
         .str.strip()
         .str.upper()
     )
 
-    df["vehicle_code_normalizado"] = (
+    df[
+        "vehicle_code_normalizado"
+    ] = (
         df["vehicle_code"]
         .fillna("")
         .astype(str)
@@ -316,15 +756,26 @@ def generar_excel():
         .str.upper()
     )
 
+    # Excluir eventos de vehículos
+    # que ya no existen en API vehicles
     df = df[
-        df["vehicle_code_normalizado"].isin(codigos_vigentes)
+        df[
+            "vehicle_code_normalizado"
+        ].isin(
+            codigos_vigentes
+        )
     ].copy()
 
     df = df.drop(
-        columns=["vehicle_code_normalizado"],
+        columns=[
+            "vehicle_code_normalizado"
+        ],
         errors="ignore",
     )
 
+    # ========================================================
+    # ELIMINAR COLUMNAS EVENTOS
+    # ========================================================
 
     columnas_eliminar = [
         "vehicle_detail",
@@ -348,40 +799,122 @@ def generar_excel():
         errors="ignore",
     )
 
+    # ========================================================
+    # RENOMBRAR COLUMNAS EVENTOS
+    # ========================================================
 
     nuevos_nombres = {
-        "correlative": "Correlativo",
-        "vehicle_code": "Código vehículo",
-        "name": "Nombre",
-        "description": "Descripción",
-        "fleets": "Flota",
-        "start_date": "Fecha de inicio",
-        "observacion": "Observación",
-        "clase_de_detencion": "Clase de detención",
-        "estimated_end_date": "Fecha estimada de fin",
-        "days_duration": "Duración (días)",
-        "created_by_user": "Creado por",
-        "opened_by": "Abierto por",
-        "naturaleza_detencion": "Naturaleza de la detención",
+
+        "correlative":
+            "Correlativo",
+
+        "vehicle_code":
+            "Código vehículo",
+
+        "name":
+            "Nombre",
+
+        "description":
+            "Descripción",
+
+        "fleets":
+            "Flota",
+
+        "start_date":
+            "Fecha de inicio",
+
+        "observacion":
+            "Observación",
+
+        "clase_de_detencion":
+            "Clase de detención",
+
+        "estimated_end_date":
+            "Fecha estimada de fin",
+
+        "days_duration":
+            "Duración (días)",
+
+        "created_by_user":
+            "Creado por",
+
+        "opened_by":
+            "Abierto por",
+
+        "naturaleza_detencion":
+            "Naturaleza de la detención",
     }
 
-    df = df.rename(columns=nuevos_nombres)
+    df = df.rename(
+        columns=nuevos_nombres
+    )
 
     cantidad = len(df)
 
+    # ========================================================
+    # CONVERTIR LISTAS / DICCIONARIOS
+    # ========================================================
+
     for columna in df.columns:
-        df[columna] = df[columna].apply(
-            lambda valor: (
-                json.dumps(valor, ensure_ascii=False, default=str)
-                if isinstance(valor, (list, dict))
-                else valor
+
+        df[columna] = (
+            df[columna].apply(
+                lambda valor: (
+                    json.dumps(
+                        valor,
+                        ensure_ascii=False,
+                        default=str
+                    )
+                    if isinstance(
+                        valor,
+                        (list, dict)
+                    )
+                    else valor
+                )
             )
         )
 
-    if df.empty:
-        df = pd.DataFrame(
-            {"Mensaje": ["No se encontraron eventos abiertos."]}
+    # Lo mismo para detalle de flota
+    for columna in detalle_flota.columns:
+
+        detalle_flota[
+            columna
+        ] = (
+            detalle_flota[
+                columna
+            ].apply(
+                lambda valor: (
+                    json.dumps(
+                        valor,
+                        ensure_ascii=False,
+                        default=str
+                    )
+                    if isinstance(
+                        valor,
+                        (list, dict)
+                    )
+                    else valor
+                )
+            )
         )
+
+    # ========================================================
+    # SI NO HAY EVENTOS
+    # ========================================================
+
+    if df.empty:
+
+        df = pd.DataFrame(
+            {
+                "Mensaje": [
+                    "No se encontraron eventos abiertos."
+                ]
+            }
+        )
+
+    # ========================================================
+    # RESUMEN
+    # ========================================================
 
     resumen = pd.DataFrame(
         {
@@ -390,6 +923,7 @@ def generar_excel():
                 "Eventos abiertos",
                 "Criterio",
             ],
+
             "Valor": [
                 fecha,
                 cantidad,
@@ -398,48 +932,114 @@ def generar_excel():
         }
     )
 
-    with pd.ExcelWriter(ARCHIVO_EXCEL, engine="openpyxl") as writer:
+    # ========================================================
+    # CREAR EXCEL
+    # ========================================================
+
+    with pd.ExcelWriter(
+        ARCHIVO_EXCEL,
+        engine="openpyxl"
+    ) as writer:
+
+        # Hoja 1
         df.to_excel(
             writer,
             sheet_name="Eventos abiertos",
             index=False,
         )
+
+        # Hoja 2
         resumen.to_excel(
             writer,
             sheet_name="Resumen",
             index=False,
         )
-        ajustar_excel(writer.sheets["Eventos abiertos"])
-        ajustar_excel(writer.sheets["Resumen"])
+
+        # Hoja 3
+        detalle_flota.to_excel(
+            writer,
+            sheet_name="Detalle flota",
+            index=False,
+        )
+
+        # Formato hojas
+        ajustar_excel(
+            writer.sheets[
+                "Eventos abiertos"
+            ]
+        )
+
+        ajustar_excel(
+            writer.sheets[
+                "Resumen"
+            ]
+        )
+
+        ajustar_excel(
+            writer.sheets[
+                "Detalle flota"
+            ]
+        )
 
 
+# ============================================================
+# ENVIAR CORREO
+# ============================================================
 
 def enviar_correo():
-    mensaje = EmailMessage()
-    mensaje["From"] = CORREO_ORIGEN
-    mensaje["To"] = CORREO_DESTINO
-    mensaje["Subject"] = "Reporte indisponibilidad flota granel"
 
-    # El cuerpo definitivo lo construye Power Automate.
+    mensaje = EmailMessage()
+
+    mensaje[
+        "From"
+    ] = CORREO_ORIGEN
+
+    mensaje[
+        "To"
+    ] = CORREO_DESTINO
+
+    mensaje[
+        "Subject"
+    ] = (
+        "Reporte indisponibilidad flota granel"
+    )
+
+    # El cuerpo definitivo
+    # lo construye Power Automate
     mensaje.set_content(
         "Reporte automático para procesamiento en Power Automate."
     )
 
     archivos = [
+
         (
-            Path(ARCHIVO_GRAFICO),
+            Path(
+                ARCHIVO_GRAFICO
+            ),
             "image",
             "png",
         ),
+
         (
-            Path(ARCHIVO_EXCEL),
+            Path(
+                ARCHIVO_EXCEL
+            ),
             "application",
             "vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         ),
+
     ]
 
-    for ruta, tipo_principal, subtipo in archivos:
-        with ruta.open("rb") as archivo:
+    for (
+        ruta,
+        tipo_principal,
+        subtipo
+    ) in archivos:
+
+        with ruta.open(
+            "rb"
+        ) as archivo:
+
             mensaje.add_attachment(
                 archivo.read(),
                 maintype=tipo_principal,
@@ -447,17 +1047,41 @@ def enviar_correo():
                 filename=ruta.name,
             )
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as servidor:
-        servidor.login(CORREO_ORIGEN, GMAIL_APP_PASSWORD)
-        servidor.send_message(mensaje)
+    # ========================================================
+    # ENVÍO GMAIL
+    # ========================================================
 
+    with smtplib.SMTP_SSL(
+        "smtp.gmail.com",
+        465
+    ) as servidor:
+
+        servidor.login(
+            CORREO_ORIGEN,
+            GMAIL_APP_PASSWORD
+        )
+
+        servidor.send_message(
+            mensaje
+        )
+
+
+# ============================================================
+# MAIN
+# ============================================================
 
 def main():
+
     generar_grafico()
+
     generar_excel()
+
     enviar_correo()
+
     print(
-        f"Generados y enviados: {ARCHIVO_GRAFICO} y {ARCHIVO_EXCEL}"
+        f"Generados y enviados: "
+        f"{ARCHIVO_GRAFICO} "
+        f"y {ARCHIVO_EXCEL}"
     )
 
 
