@@ -23,7 +23,7 @@ URL_EVENTOS = (
 )
 
 ARCHIVO_GRAFICO = "status_flota_dependencia.png"
-ARCHIVO_EXCEL = "eventos_abiertos.xlsx"
+ARCHIVO_EXCEL = "Detalle.xlsx"
 
 CORREO_ORIGEN = os.environ["CORREO_ORIGEN"]
 CORREO_DESTINO = os.environ["CORREO_DESTINO"]
@@ -948,13 +948,6 @@ def generar_excel():
             index=False,
         )
 
-        # Hoja 2
-        resumen.to_excel(
-            writer,
-            sheet_name="Resumen",
-            index=False,
-        )
-
         # Hoja 3
         detalle_flota.to_excel(
             writer,
@@ -966,12 +959,6 @@ def generar_excel():
         ajustar_excel(
             writer.sheets[
                 "Eventos abiertos"
-            ]
-        )
-
-        ajustar_excel(
-            writer.sheets[
-                "Resumen"
             ]
         )
 
