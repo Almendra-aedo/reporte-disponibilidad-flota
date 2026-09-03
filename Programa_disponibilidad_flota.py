@@ -12,6 +12,18 @@ import requests
 from matplotlib.patches import FancyBboxPatch
 from openpyxl.styles import Alignment, Font, PatternFill
 
+# ============================================================
+# EXCLUSIONES TEMPORALES
+# ============================================================
+
+VEHICULOS_EXCLUIDOS = {
+    "GR5161",
+    "GR5162",
+    "GR5163",
+    "GR5164",
+    "GR5165",
+}
+
 
 API_KEY = os.environ["DRIVIN_API_KEY"]
 
@@ -166,6 +178,8 @@ def generar_grafico():
         & ~df["fleets"]
         .str.lower()
         .str.contains("emergencia", na=False)
+    ].copy()
+        & ~df["code"].str.upper().isin(VEHICULOS_EXCLUIDOS)
     ].copy()
 
     # Dependencia
