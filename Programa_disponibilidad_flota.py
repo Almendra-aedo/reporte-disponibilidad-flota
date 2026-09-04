@@ -172,13 +172,13 @@ def generar_grafico():
         ~df["code"]
         .str.upper()
         .str.contains("FI", na=False)
-
+    
         & df["code"].str.len().le(6)
-
+    
         & ~df["fleets"]
         .str.lower()
         .str.contains("emergencia", na=False)
-    ].copy()
+    
         & ~df["code"].str.upper().isin(VEHICULOS_EXCLUIDOS)
     ].copy()
 
